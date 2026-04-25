@@ -1456,20 +1456,45 @@ const layer: Layer.Layer<
           const combined = signals.length === 0 ? null : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
           if (combined) opts.signal = combined
 
-          // Strip openai itemId metadata following what codex does
-          if (model.api.npm === "@ai-sdk/openai" && opts.body && opts.method === "POST") {
-            const body = JSON.parse(opts.body as string)
-            const isAzure = model.providerID.includes("azure")
-            const keepIds = isAzure && body.store === true
-            if (!keepIds && Array.isArray(body.input)) {
-              for (const item of body.input) {
-                if ("id" in item) {
-                  delete item.id
+
+          // BEGIN: unified request body patching
+          if (opts.body && opts.method === "POST") {
+            try {
+              const body = JSON.parse(opts.body as string)
+
+              // Existing OpenAI cleanup (unchanged)
+              // Strip openai itemId metadata following what codex does
+              if (model.api.npm === "@ai-sdk/openai") {
+                const isAzure = model.providerID.includes("azure")
+                const keepIds = isAzure && body.store === true
+                if (!keepIds && Array.isArray(body.input)) {
+                  for (const item of body.input) {
+                    if ("id" in item) {
+                      delete item.id
+                    }
+                  }
                 }
               }
+
+              // GPT-5 + openai-compatible
+              if (
+                model.api.npm === "@ai-sdk/openai-compatible" &&
+                model.id.includes("gpt-5")
+              ) {
+                // ---- Token Fix ----
+                if (body.max_tokens != null) {
+                  body.max_completion_tokens = body.max_tokens
+                }
+                delete body.max_tokens
+              }
+              // console.log("=== FINAL REQUEST BODY ===")
+              // console.log(JSON.stringify(body, null, 2))
+              // console.log("=== END BODY ===")
               opts.body = JSON.stringify(body)
+            } catch {
             }
           }
+          // END PATCH
 
           const res = await fetchFn(input, {
             ...opts,

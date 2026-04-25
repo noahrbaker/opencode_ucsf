@@ -145,7 +145,11 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV3 {
         user: compatibleOptions.user,
 
         // standardized settings:
-        max_tokens: maxOutputTokens,
+        ...(maxOutputTokens != null
+          ? this.modelId.includes("gpt-5")
+            ? { max_completion_tokens: maxOutputTokens }
+            : { max_tokens: maxOutputTokens }
+          : {}),
         temperature,
         top_p: topP,
         frequency_penalty: frequencyPenalty,
