@@ -178,6 +178,10 @@ export const Info = Schema.Struct({
   provider: Schema.optional(Schema.Record(Schema.String, ConfigProvider.Info)).annotate({
     description: "Custom provider configurations and model overrides",
   }),
+  token_correction_factor: Schema.optional(Schema.Number).annotate({
+    description:
+      "Heuristic multiplicative factor applied to visible token counts when computing cost and display. Default 1.0",
+  }),
   mcp: Schema.optional(
     Schema.Record(
       Schema.String,

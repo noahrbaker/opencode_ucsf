@@ -296,7 +296,12 @@ export function plan(input: { slug: string; time: { created: number } }) {
   return path.join(base, [input.time.created, input.slug].join("-") + ".md")
 }
 
-export const getUsage = (input: { model: Provider.Model; usage: LanguageModelUsage; metadata?: ProviderMetadata }) => {
+export const getUsage = (input: {
+  model: Provider.Model
+  usage: LanguageModelUsage
+  metadata?: ProviderMetadata
+  tokenCorrectionFactor?: number
+}) => {
   const safe = (value: number) => {
     if (!Number.isFinite(value)) return 0
     return value
@@ -330,8 +335,8 @@ export const getUsage = (input: { model: Provider.Model; usage: LanguageModelUsa
 
   const total = input.usage.totalTokens
 
-  const tokens = {
-    total,
+  // Build raw tokens object (pre-correction)
+  const rawTokens = {
     input: adjustedInputTokens,
     output: safe(outputTokens - reasoningTokens),
     reasoning: reasoningTokens,
@@ -341,23 +346,46 @@ export const getUsage = (input: { model: Provider.Model; usage: LanguageModelUsa
     },
   }
 
+  // Determine correction factor (default 1.4)
+  const rawFactor = input.tokenCorrectionFactor
+  const factor = typeof rawFactor === "number" && Number.isFinite(rawFactor) && rawFactor > 0 ? rawFactor : 1.4
+
+  // Apply factor and round to integers for stored tokens
+  const adjInput = Math.round(rawTokens.input * factor)
+  const adjOutput = Math.round(rawTokens.output * factor)
+  const adjReasoning = Math.round(rawTokens.reasoning * factor)
+  const adjCacheRead = Math.round(rawTokens.cache.read * factor)
+  const adjCacheWrite = Math.round(rawTokens.cache.write * factor)
+
+  const tokensAdjusted = {
+    total: adjInput + adjOutput + adjReasoning + adjCacheRead + adjCacheWrite,
+    input: adjInput,
+    output: adjOutput,
+    reasoning: adjReasoning,
+    cache: {
+      write: adjCacheWrite,
+      read: adjCacheRead,
+    },
+  }
+
   const costInfo =
-    input.model.cost?.experimentalOver200K && tokens.input + tokens.cache.read > 200_000
+    input.model.cost?.experimentalOver200K && tokensAdjusted.input + tokensAdjusted.cache.read > 200_000
       ? input.model.cost.experimentalOver200K
       : input.model.cost
+
   return {
     cost: safe(
       new Decimal(0)
-        .add(new Decimal(tokens.input).mul(costInfo?.input ?? 0).div(1_000_000))
-        .add(new Decimal(tokens.output).mul(costInfo?.output ?? 0).div(1_000_000))
-        .add(new Decimal(tokens.cache.read).mul(costInfo?.cache?.read ?? 0).div(1_000_000))
-        .add(new Decimal(tokens.cache.write).mul(costInfo?.cache?.write ?? 0).div(1_000_000))
+        .add(new Decimal(tokensAdjusted.input).mul(costInfo?.input ?? 0).div(1_000_000))
+        .add(new Decimal(tokensAdjusted.output).mul(costInfo?.output ?? 0).div(1_000_000))
+        .add(new Decimal(tokensAdjusted.cache.read).mul(costInfo?.cache?.read ?? 0).div(1_000_000))
+        .add(new Decimal(tokensAdjusted.cache.write).mul(costInfo?.cache?.write ?? 0).div(1_000_000))
         // TODO: update models.dev to have better pricing model, for now:
         // charge reasoning tokens at the same rate as output tokens
-        .add(new Decimal(tokens.reasoning).mul(costInfo?.output ?? 0).div(1_000_000))
+        .add(new Decimal(tokensAdjusted.reasoning).mul(costInfo?.output ?? 0).div(1_000_000))
         .toNumber(),
     ),
-    tokens,
+    tokens: tokensAdjusted,
   }
 }
 

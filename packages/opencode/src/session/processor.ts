@@ -355,11 +355,13 @@ export const layer: Layer.Layer<
             return
 
           case "finish-step": {
-            const usage = Session.getUsage({
-              model: ctx.model,
-              usage: value.usage,
-              metadata: value.providerMetadata,
-            })
+            const cfg = yield* config.get()
+              const usage = Session.getUsage({
+                model: ctx.model,
+                usage: value.usage,
+                metadata: value.providerMetadata,
+                tokenCorrectionFactor: cfg.token_correction_factor ?? 1.0,
+              })
             ctx.assistantMessage.finish = value.finishReason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens

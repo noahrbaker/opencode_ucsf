@@ -70,6 +70,7 @@ export const StatsCommand = cmd({
   },
   handler: async (args) => {
     await bootstrap(process.cwd(), async () => {
+      const cfg = await AppRuntime.runPromise((await import("@/config")).Config.Service.use((s) => s.get()))
       const stats = await aggregateSessionStats(args.days, args.project)
 
       let modelLimit: number | undefined
@@ -79,7 +80,7 @@ export const StatsCommand = cmd({
         modelLimit = args.models
       }
 
-      displayStats(stats, args.tools, modelLimit)
+      displayStats(stats, args.tools, modelLimit, cfg.token_correction_factor ?? 1.0)
     })
   },
 })
@@ -309,7 +310,7 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
   return stats
 }
 
-export function displayStats(stats: SessionStats, toolLimit?: number, modelLimit?: number) {
+export function displayStats(stats: SessionStats, toolLimit?: number, modelLimit?: number, tokenCorrectionFactor?: number) {
   const width = 56
 
   function renderRow(label: string, value: string): string {
@@ -345,6 +346,9 @@ export function displayStats(stats: SessionStats, toolLimit?: number, modelLimit
   console.log(renderRow("Output", formatNumber(stats.totalTokens.output)))
   console.log(renderRow("Cache Read", formatNumber(stats.totalTokens.cache.read)))
   console.log(renderRow("Cache Write", formatNumber(stats.totalTokens.cache.write)))
+  if (tokenCorrectionFactor !== undefined) {
+    console.log(renderRow("Adjusted Tokens (×heuristic)", `×${tokenCorrectionFactor}`))
+  }
   console.log("└────────────────────────────────────────────────────────┘")
   console.log()
 
